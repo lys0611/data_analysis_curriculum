@@ -2,8 +2,7 @@
 
 : ${MYSQL_HOST:="default.mysql.endpoint.com"}
 export MYSQL_HOST
-echo "MYSQL_HOST set to: $MYSQL_HOST"
-
+logger "[INFO] MYSQL_HOST set to: $MYSQL_HOST"
 
 # 전역 변수 초기화
 LOG_PREFIX="kakaocloud: "
@@ -13,6 +12,7 @@ LOG_COUNTER=0
 log() {
     LOG_COUNTER=$((LOG_COUNTER + 1))
     echo "${LOG_PREFIX}${LOG_COUNTER}. $1"
+    logger "[INFO] ${LOG_PREFIX}${LOG_COUNTER}. $1"
 }
 
 # 명령 실행 및 상태 확인 함수
@@ -26,20 +26,20 @@ run_command() {
     fi
 }
 
-log "Starting system update and package installation..."
+logger "Starting system update and package installation..."
 
 # 1. 시스템 업데이트 및 필요한 패키지 설치
-log "Updating system and installing Python, Gunicorn, and Nginx..."
+logger "Updating system and installing Python, Gunicorn, and Nginx..."
 run_command apt update
 run_command apt install -y python3 python3-pip gunicorn nginx python3-mysql.connector mysql-client
 
 # 2. Flask 설치
-log "Installing Flask..."
+logger "Installing Flask..."
 run_command apt install -y python3-flask
 
 # 3. Flask 애플리케이션 설정
 APP_DIR="/var/www/flask_app"
-log "Step 3: Setting up Flask application in $APP_DIR..."
+logger "Step 3: Setting up Flask application in $APP_DIR..."
 run_command mkdir -p $APP_DIR
 
 cat > $APP_DIR/app.py <<EOL
@@ -1211,17 +1211,17 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 EOL
 
-log "Flask application setup completed successfully."
+logger "Flask application setup completed successfully."
 
 # 4. 워커 및 스레드 개수 계산
-log "Step 4: Calculating Gunicorn workers and threads..."
+logger "Step 4: Calculating Gunicorn workers and threads..."
 CPU_CORES=$(nproc)
 WORKERS=$((CPU_CORES * 2 + 1))  # 공식: (코어 수 * 2) + 1
 THREADS=4                       # 스레드 기본값 (I/O 바운드 환경)
-log "Detected $CPU_CORES CPU cores: setting $WORKERS workers and $THREADS threads."
+logger "Detected $CPU_CORES CPU cores: setting $WORKERS workers and $THREADS threads."
 
 # 5. Gunicorn 서비스 파일 생성
-log "Step 5: Creating Gunicorn service..."
+logger "Step 5: Creating Gunicorn service..."
 
 # 이하 Gunicorn, Nginx 설정 부분은 동일
 LOG_FORMAT_NAME="custom_json"
@@ -1247,7 +1247,7 @@ run_command systemctl start flask_app
 
 NGINX_CONF_MAIN="/etc/nginx/nginx.conf"
 
-log "Step 6: Configuring Nginx with custom JSON log format..."
+logger "Step 6: Configuring Nginx with custom JSON log format..."
 
 if ! grep -q "log_format $LOG_FORMAT_NAME" $NGINX_CONF_MAIN; then
     echo "Adding custom_json log format to NGINX configuration..."
@@ -1303,5 +1303,5 @@ run_command rm -f /etc/nginx/sites-enabled/default
 run_command nginx -t
 run_command systemctl restart nginx
 
-log "Step 7: Setup complete. Flask application is running with Gunicorn and Nginx."
+logger "Step 7: Setup complete. Flask application is running with Gunicorn and Nginx."
 echo "You can access your application at http://<your_server_ip>/"

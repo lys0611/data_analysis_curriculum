@@ -1,8 +1,9 @@
 #!/bin/bash
+echo "[INFO] Starting main_script.sh ..."
 
-export MYSQL_HOST="az-a.api-db.ae90ddc1b6dc4b0581bb44b31f8921b5.mysql.managed-service.kr-central-2.kakaocloud.com"
-echo "MYSQL_HOST set to: $MYSQL_HOST"
-
+: ${MYSQL_HOST:="default.mysql.endpoint.com"}
+export MYSQL_HOST
+echo "[INFO] MYSQL_HOST set to: $MYSQL_HOST"
 
 # 전역 변수 초기화
 LOG_PREFIX="kakaocloud: "
@@ -21,24 +22,31 @@ run_command() {
         log "$1 succeeded."
     else
         log "Error: $1 failed."
+        echo "[ERROR] '$*' 명령 실행 중 오류가 발생하여 스크립트를 종료합니다."
         exit 1
     fi
 }
 
 # 1. 시스템 업데이트 및 필요한 패키지 설치
+echo "[STEP 1] Updating package list, installing Python3, Gunicorn, and Nginx..."
 log "Updating system and installing Python, Gunicorn, and Nginx..."
 run_command apt update
 run_command apt install -y python3 python3-pip gunicorn nginx python3-mysql.connector mysql-client
+echo "[STEP 1] Done. Packages installed."
 
 # 2. Flask 설치
+echo "[STEP 2] Installing Flask..."
 log "Installing Flask..."
 run_command apt install -y python3-flask
+echo "[STEP 2] Done. Flask installed."
 
 # 3. Flask 애플리케이션 설정
 APP_DIR="/var/www/flask_app"
+echo "[STEP 3] Creating Flask application directory at $APP_DIR ..."
 log "Setting up Flask application in $APP_DIR..."
 run_command mkdir -p $APP_DIR
 
+echo "[STEP 3] Writing Flask app.py to $APP_DIR/app.py"
 cat > $APP_DIR/app.py <<EOL
 from flask import Flask, request, make_response
 import uuid
@@ -1208,16 +1216,20 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 EOL
 
+echo "[STEP 3] Flask application setup completed successfully."
 log "Flask application setup completed successfully."
 
 # 4. 워커 및 스레드 개수 계산
+echo "[STEP 4] Calculating Gunicorn workers and threads..."
 log "Calculating Gunicorn workers and threads..."
 CPU_CORES=$(nproc)
 WORKERS=$((CPU_CORES * 2 + 1))  # 공식: (코어 수 * 2) + 1
 THREADS=4                       # 스레드 기본값 (I/O 바운드 환경)
 log "Detected $CPU_CORES CPU cores: setting $WORKERS workers and $THREADS threads."
+echo "[STEP 4] Detected \$CPU_CORES CPU cores. Setting \$WORKERS workers and \$THREADS threads."
 
 # 5. Gunicorn 서비스 파일 생성
+echo "[STEP 5] Creating Gunicorn service file at /etc/systemd/system/flask_app.service..."
 log "Creating Gunicorn service..."
 
 # 이하 Gunicorn, Nginx 설정 부분은 동일
@@ -1241,7 +1253,9 @@ EOL
 run_command systemctl daemon-reload
 run_command systemctl enable flask_app
 run_command systemctl start flask_app
+echo "[STEP 5] Gunicorn service created and started."
 
+echo "[STEP 6] Checking and updating Nginx configuration..."
 NGINX_CONF_MAIN="/etc/nginx/nginx.conf"
 
 if ! grep -q "log_format $LOG_FORMAT_NAME" $NGINX_CONF_MAIN; then
@@ -1274,6 +1288,7 @@ fi
 
 
 NGINX_CONF="/etc/nginx/sites-available/flask_app"
+echo "[STEP 6] Writing new Nginx site config..."
 cat > $NGINX_CONF <<EOL
 server {
     listen 80;
@@ -1298,5 +1313,8 @@ run_command rm -f /etc/nginx/sites-enabled/default
 run_command nginx -t
 run_command systemctl restart nginx
 
+echo "[STEP 6] Nginx configured and restarted."
+
+echo "[STEP 7] Setup complete. Flask application is running with Gunicorn and Nginx."
 log "Setup complete. Flask application is running with Gunicorn and Nginx."
 echo "You can access your application at http://<your_server_ip>/"
